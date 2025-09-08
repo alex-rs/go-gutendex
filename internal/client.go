@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -27,7 +28,10 @@ func New() *Client {
 	rc.Logger = nil
 	rc.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {
 		if err != nil {
-			return true, err
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return false, err
+			}
+			return true, nil
 		}
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
 			return true, nil
