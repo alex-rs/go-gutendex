@@ -187,38 +187,42 @@ func TestGetJSONErrorKinds(t *testing.T) {
 }
 
 func TestIterFetchErrors(t *testing.T) {
-	cases := []struct {
+	tests := []struct {
 		status int
 		kind   ErrorKind
 	}{
 		{http.StatusNotFound, ErrNotFound},
 		{http.StatusInternalServerError, ErrServer},
 	}
-	for _, tt := range cases {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(tt.status)
-		}))
-		it := NewIter[Book](internal.New(), srv.URL)
-		it.client.Limiter = rate.NewLimiter(rate.Inf, 1)
-		it.client.SetRetryWait(0, 0)
-		it.client.SetRetryMax(0)
-		it.client.SetCheckRetry(func(context.Context, *http.Response, error) (bool, error) { return false, nil })
-		if it.Next() {
-			t.Fatalf("Next should be false")
-		}
-		if e, ok := it.Err().(*Error); !ok || e.Kind != tt.kind {
-			t.Fatalf("expected kind %v, got %v", tt.kind, it.Err())
-		}
-		srv.Close()
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%d", tt.status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.status)
+			}))
+			defer srv.Close()
+
+			it := NewIter[Book](internal.New(), srv.URL)
+			it.client.Limiter = rate.NewLimiter(rate.Inf, 1)
+			it.client.SetRetryWait(0, 0)
+			it.client.SetRetryMax(0)
+			it.client.SetCheckRetry(func(context.Context, *http.Response, error) (bool, error) { return false, nil })
+
+			err := it.fetch(context.Background())
+			if e, ok := err.(*Error); !ok || e.Kind != tt.kind {
+				t.Fatalf("expected kind %v, got %v", tt.kind, err)
+			}
+		})
 	}
 }
 
 func TestValueBeforeNextPanics(t *testing.T) {
-	it := NewIter[Book](internal.New(), "")
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatalf("expected panic")
-		}
-	}()
-	_ = it.Value()
+	t.Run("panic", func(t *testing.T) {
+		it := NewIter[Book](internal.New(), "")
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatalf("expected panic")
+			}
+		}()
+		_ = it.Value()
+	}) // expect panic
 }
