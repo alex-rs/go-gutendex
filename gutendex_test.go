@@ -50,8 +50,9 @@ func TestNotFound(t *testing.T) {
 
 	c := newTestClient(srv.URL)
 	_, err := c.GetBook(context.Background(), 1)
-	if err == nil || !IsNotFound(err) {
-		t.Fatalf("expected IsNotFound, got %v", err)
+	var e *Error
+	if !errors.As(err, &e) || e.Kind != ErrNotFound || !IsNotFound(err) {
+		t.Fatalf("expected ErrNotFound and IsNotFound, got %v", err)
 	}
 }
 
@@ -155,17 +156,32 @@ func TestGetJSONErrorKinds(t *testing.T) {
 	})
 
 	t.Run("rate limited", func(t *testing.T) {
+		attempts := 0
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			attempts++
 			w.WriteHeader(http.StatusTooManyRequests)
 		}))
 		defer srv.Close()
 		c := newTestClient(srv.URL)
-		c.hc.SetRetryMax(0)
-		c.hc.SetCheckRetry(func(context.Context, *http.Response, error) (bool, error) { return false, nil })
+		c.hc.SetRetryMax(1)
+		retryCalls := 0
+		c.hc.SetCheckRetry(func(ctx context.Context, resp *http.Response, err error) (bool, error) {
+			if err != nil {
+				return false, err
+			}
+			if resp.StatusCode == http.StatusTooManyRequests && retryCalls == 0 {
+				retryCalls++
+				return true, nil
+			}
+			return false, nil
+		})
 		_, err := c.GetBook(context.Background(), 1)
 		var e *Error
 		if !errors.As(err, &e) || e.Kind != ErrRateLimited {
 			t.Fatalf("expected ErrRateLimited, got %v", err)
+		}
+		if attempts != 2 {
+			t.Fatalf("expected 2 attempts, got %d", attempts)
 		}
 	})
 }
