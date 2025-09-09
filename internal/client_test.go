@@ -10,14 +10,18 @@ import (
 	"time"
 )
 
-func TestSetRetryWaitOrder(t *testing.T) {
+func TestSetRetryWaitEnsuresOrderAndValues(t *testing.T) {
 	c := New()
 	c.SetRetryWait(2*time.Second, 500*time.Millisecond)
+
 	if c.client.RetryWaitMin > c.client.RetryWaitMax {
-		t.Fatalf("min > max: %v > %v", c.client.RetryWaitMin, c.client.RetryWaitMax)
+		t.Fatalf("RetryWaitMin %v > RetryWaitMax %v", c.client.RetryWaitMin, c.client.RetryWaitMax)
 	}
-	if c.client.RetryWaitMin != 500*time.Millisecond || c.client.RetryWaitMax != 2*time.Second {
-		t.Fatalf("unexpected values: %v %v", c.client.RetryWaitMin, c.client.RetryWaitMax)
+	if c.client.RetryWaitMin != 500*time.Millisecond {
+		t.Fatalf("RetryWaitMin = %v, want 500ms", c.client.RetryWaitMin)
+	}
+	if c.client.RetryWaitMax != 2*time.Second {
+		t.Fatalf("RetryWaitMax = %v, want 2s", c.client.RetryWaitMax)
 	}
 }
 
